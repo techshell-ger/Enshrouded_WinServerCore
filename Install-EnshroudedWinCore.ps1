@@ -14,10 +14,12 @@ Function Write-Log {
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $LogEntry = "[$TimeStamp] [$Type] $Message"
     $LogEntry | Out-File -FilePath $LogFile -Append
+    
     $Color = "White"
     if ($Type -eq "SUCCESS") { $Color = "Green" }
     if ($Type -eq "ERROR")   { $Color = "Red" }
     if ($Type -eq "WARN")    { $Color = "Yellow" }
+    
     Write-Host $Message -ForegroundColor $Color
 }
 
@@ -30,59 +32,95 @@ do {
     Write-Log "Waiting for user input..." "INFO"
     Write-Host "`n --- Enshrouded Server Setup Configuration --- `n" -ForegroundColor Yellow
     
+    # 1. Basic Info
     $ServerName = Read-Host "> Enter Server Name"
     if ([string]::IsNullOrWhiteSpace($ServerName)) { $ServerName = "DefaultServerName_Enshrouded" }
     $Password = Read-Host "> Enter Server Password"
 
+    # 2. IP Validation
     while ($true) {
         $ServerIP = Read-Host "> Enter Server IP (Default: 0.0.0.0)"
         if ([string]::IsNullOrWhiteSpace($ServerIP)) { $ServerIP = "0.0.0.0"; break }
         if ($ServerIP -match "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$") { break }
-        Write-Host "`n Invalid IP! Use IPv4 format. `n" -ForegroundColor Red
+        Write-Host "`n Invalid IP! Use IPv4 format (0.0.0.0 - 255.255.255.255). `n" -ForegroundColor Red
     }
 
+    # 3. Port Validation Function
     Function Get-ValidPort {
         Param ([string]$Prompt, $Default)
         while ($true) {
             $Input = Read-Host "> $Prompt (Default: $Default)"
             if ([string]::IsNullOrWhiteSpace($Input)) { return $Default }
             if ($Input -match "^\d+$" -and [int]$Input -ge 0 -and [int]$Input -le 65535) { return $Input }
-            Write-Host "`n Invalid Port! `n" -ForegroundColor Red
+            Write-Host "`n Invalid Port! Enter a number between 0 and 65535. `n" -ForegroundColor Red
         }
     }
     $GamePort  = Get-ValidPort "Enter Game Port" "15636"
     $QueryPort = Get-ValidPort "Enter Query Port" "15637"
 
+    # 4. Slot Count Validation
     while ($true) {
-        $SlotCount = Read-Host "> Enter Max Players (4-16)"
+        $SlotCount = Read-Host "> Enter Max Players (Range: 4 - 16, Default: 4)"
         if ([string]::IsNullOrWhiteSpace($SlotCount)) { $SlotCount = "4"; break }
         if ($SlotCount -match "^\d+$" -and [int]$SlotCount -ge 4 -and [int]$SlotCount -le 16) { break }
-        Write-Host "`n Invalid input! (4-16). `n" -ForegroundColor Red
+        Write-Host "`n Invalid input! Please enter a number between 4 and 16. `n" -ForegroundColor Red
     }
 
+    # 5. Backup Time Validation
     while ($true) {
-        $BackupTime = Read-Host "> Enter backup time (HH:mm)"
+        $BackupTime = Read-Host "> Enter daily backup time (Format HH:mm, e.g., 03:00)"
         if ([string]::IsNullOrWhiteSpace($BackupTime)) { $BackupTime = "03:00"; break }
         if ($BackupTime -match "^([0-1][0-9]|2[0-3]):([0-5][0-9])$") { break }
-        Write-Host "`n Invalid Format! `n" -ForegroundColor Red
+        Write-Host "`n Invalid Format! Please use HH:mm. `n" -ForegroundColor Red
     }
 
+    # 6. Directory Configuration
     $SteamCMDPath = "C:\SteamCMD"
     $ServerPath   = "C:\EnshroudedServer"
     $BackupPath   = "C:\EnshroudedBackups"
 
-    # Summary and Confirmation
+    Write-Host "`n--- Current Default Directories ---" -ForegroundColor Gray
+    Write-Host " SteamCMD: $SteamCMDPath"
+    Write-Host " Server:   $ServerPath"
+    Write-Host " Backups:  $BackupPath"
+    
+    if ((Read-Host "`n> Do you want to change these Default Directories? (y / n)") -match "^(y|yes)$") {
+        Write-Host "`n--- Custom Directory Configuration ---" -ForegroundColor Yellow
+        $InputSteam = Read-Host "> Enter path for SteamCMD"
+        $InputServer = Read-Host "> Enter path for Server Files"
+        $InputBackup = Read-Host "> Enter path for Backups"
+        if (![string]::IsNullOrWhiteSpace($InputSteam)) { $SteamCMDPath = $InputSteam }
+        if (![string]::IsNullOrWhiteSpace($InputServer)) { $ServerPath = $InputServer }
+        if (![string]::IsNullOrWhiteSpace($InputBackup)) { $BackupPath = $InputBackup }
+    }
+
+    # 7. System Validation
+    $OSName = (Get-CimInstance Win32_OperatingSystem).Caption
+    if ($OSName -match "Windows Server|Windows 10|Windows 11") {
+        Write-Log "System Check: $OSName detected." "SUCCESS"
+    } else {
+        Write-Log "System Check failed: $OSName is not supported." "ERROR"; exit
+    }
+
+    # 8. Final Summary & Confirmation
     Write-Host "`n--- Installation Summary ---" -ForegroundColor Yellow
+    Write-Host "Detected OS:    $OSName"
     Write-Host "Server Name:    $ServerName"
+    Write-Host "Server PW:      $Password"
+    Write-Host "Server IP:      $ServerIP"
     Write-Host "Game Port:      $GamePort (UDP)"
     Write-Host "Query Port:     $QueryPort (UDP)"
+    Write-Host "Max Players:    $SlotCount"
     Write-Host "Backup Time:    $BackupTime"
     Write-Host "----------------------------"
+    Write-Host "SteamCMD Path:  $SteamCMDPath"
     Write-Host "Server Path:    $ServerPath"
+    Write-Host "Backup Path:    $BackupPath"
     Write-Host "----------------------------"
 
-    if ((Read-Host "`nProceed with installation? (y / n)") -match "^(y|yes)$") {
+    if ((Read-Host "`nIs this information correct? Proceed with installation? (y / n)") -match "^(y|yes)$") {
         $GlobalConfirm = $true
+        Write-Log "Configuration confirmed. Starting process..." "INFO"
     } else { Clear-Host }
 } until ($GlobalConfirm)
 
@@ -91,6 +129,7 @@ do {
 Write-Log "Creating directories..." "INFO"
 New-Item -ItemType Directory -Force -Path $SteamCMDPath, $ServerPath, $BackupPath | Out-Null
 
+# SteamCMD Setup
 Write-Log "Downloading & Extracting SteamCMD..." "INFO"
 try {
     Invoke-WebRequest -Uri "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip" -OutFile "$SteamCMDPath\steamcmd.zip" -ErrorAction Stop
@@ -99,26 +138,24 @@ try {
     Write-Log "Critical Error during SteamCMD setup: $_" "ERROR"; exit
 }
 
-# INSTALL ENSHROUDED (Enhanced Logic)
-Write-Log "Starting SteamCMD initialization and download..." "INFO"
-
-# Step 1: Force Platform and Login (First Run)
+# --- STEAMCMD INITIALIZATION (Fix for 'Missing Configuration' Error) ---
+Write-Log "Starting SteamCMD initialization (Login & Platform Check)..." "INFO"
 & "$SteamCMDPath\steamcmd.exe" +@sSteamCmdForcePlatformType windows +login anonymous +quit
 
-# Step 2: Set Path and Download (Separate Step to ensure 'Missing Configuration' error is avoided)
+# Install Enshrouded
 Write-Log "Installing Enshrouded App 2278520... This may take a while." "INFO"
 & "$SteamCMDPath\steamcmd.exe" +@sSteamCmdForcePlatformType windows +force_install_dir "$ServerPath" +login anonymous +app_update 2278520 validate +quit
 
 # Validation
 $ExePath = Join-Path -Path $ServerPath -ChildPath "enshrouded_server.exe"
 if (Test-Path $ExePath) {
-    Write-Log "Validation SUCCESS: Server files found." "SUCCESS"
+    Write-Log "Validation SUCCESS: enshrouded_server.exe found." "SUCCESS"
 } else {
     Write-Log "Validation FAILED: enshrouded_server.exe NOT found!" "ERROR"; exit
 }
 
 # CONFIG GENERATION
-Write-Log "Generating configuration..." "INFO"
+Write-Log "Generating configuration file (enshrouded_server.json)..." "INFO"
 $ConfigObject = @{
     name          = $ServerName
     password      = $Password
@@ -129,25 +166,33 @@ $ConfigObject = @{
     queryPort     = [int]$QueryPort
     slotCount     = [int]$SlotCount
 }
+
+# Save with UTF8 (No BOM)
 $ConfigJson = $ConfigObject | ConvertTo-Json
 try {
     [System.IO.File]::WriteAllText("$ServerPath\enshrouded_server.json", $ConfigJson)
-    Write-Log "Configuration file saved." "SUCCESS"
+    Write-Log "Configuration file saved successfully." "SUCCESS"
 } catch {
-    Write-Log "Failed to save configuration." "ERROR"
+    Write-Log "Failed to save configuration: $_" "ERROR"
 }
 
-# Backup Task
+# BACKUP TASK CREATION
+Write-Log "Creating daily backup scheduled task for $BackupTime..." "INFO"
 try {
     $Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-Command `"Compress-Archive -Path '$ServerPath\savegame' -DestinationPath '$BackupPath\Backup_$(Get-Date -Format 'yyyyMMdd_HHmm').zip' -Force`""
     $Trigger = New-ScheduledTaskTrigger -Daily -At $BackupTime
     Register-ScheduledTask -TaskName "EnshroudedBackupTask" -Action $Action -Trigger $Trigger -Principal (New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount) -Force -ErrorAction Stop
-    Write-Log "Backup task created." "SUCCESS"
+    Write-Log "Backup task created successfully." "SUCCESS"
 } catch {
-    Write-Log "Failed to create backup task." "WARN"
+    Write-Log "Failed to create backup task: $_" "ERROR"
 }
 
-Write-Log "Installation Process Finished Successfully." "SUCCESS"
-Write-Host "`nFull Log available at: $LogPath" -ForegroundColor Gray
+# --- FINALIZE ---
+Write-Log "--------------------------------------------------" "SUCCESS"
+Write-Log "INSTALLATION PROCESS FINISHED SUCCESSFULLY!" "SUCCESS"
+Write-Log "Server is ready in: $ServerPath" "SUCCESS"
+Write-Log "--------------------------------------------------" "SUCCESS"
 
+Write-Host "`nFull installation log: $LogPath" -ForegroundColor Gray
+	
 Exit 0
